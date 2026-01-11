@@ -75,6 +75,12 @@ function normalizeAddr(addr: string) {
   return addr.trim().toLowerCase();
 }
 
+function displayKey(r: Alert) {
+  const addr = normalizeAddr(r.walletAddress);
+  const amt = Number.isFinite(r.amountUSD) ? r.amountUSD.toFixed(2) : String(r.amountUSD);
+  return `${addr}|${r.timestamp}|${r.side}|${amt}|${r.market}`;
+}
+
 function normalizeCat(raw: any): string {
   const s = String(raw ?? "other").trim().toLowerCase();
   if (!s) return "other";
@@ -354,6 +360,18 @@ export default function Page() {
 
   const rows = useMemo(() => {
     let list = data;
+
+    if (list.length > 1) {
+      const seen = new Set<string>();
+      const uniq: Alert[] = [];
+      for (const r of list) {
+        const key = displayKey(r);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        uniq.push(r);
+      }
+      list = uniq;
+    }
 
     if (watchOnly) list = list.filter((r) => watchlist.has(normalizeAddr(r.walletAddress)));
 
