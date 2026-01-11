@@ -66,6 +66,11 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function tradeKey(t: PMTrade): string {
+  if (t.transactionHash) return `tx:${t.transactionHash}`;
+  return `f:${t.proxyWallet}|${t.timestamp}|${t.side}|${t.size}|${t.price}|${t.conditionId}`;
+}
+
 /** =========================
  *  A) 代理钱包创建时间 createdAt（你原来的逻辑）
  * ========================= */
@@ -478,8 +483,21 @@ export async function GET(req: Request) {
       return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
     }
 
+    const seen = new Set<string>();
+    const uniqTrades: PMTrade[] = [];
+    for (const t of trades) {
+      const key = tradeKey(t);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      uniqTrades.push(t);
+    }
+
+    if (uniqTrades.length === 0) {
+      return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
+    }
+
     // 2) 先映射成 Alert（createdAt / category 先占位）
-    const rawAlerts: Alert[] = trades.map((t, i) => {
+    const rawAlerts: Alert[] = uniqTrades.map((t, i) => {
       const tsIso = toIso(t.timestamp);
       const marketLabel = t.outcome ? `${t.title} — ${t.outcome}` : t.title;
 
@@ -507,14 +525,14 @@ export async function GET(req: Request) {
 
     // 3) 批量查 代理钱包创建时间 createdAt
     const addrList = rawAlerts.map((a) => a.walletAddress);
-    const conditionIds = trades.map((t) => t.conditionId);
+    const conditionIds = uniqTrades.map((t) => t.conditionId);
     const [createdMap, condToCat] = await Promise.all([
       enrichCreatedAt(addrList, 100),
       enrichCategoriesByConditionIds(conditionIds),
     ]);
 
     const enriched = rawAlerts.map((a, idx) => {
-      const trade = trades[idx];
+      const trade = uniqTrades[idx];
       const createdAt = createdMap.get(a.walletAddress.toLowerCase()) ?? null;
 
       const catInfo = condToCat.get(String(trade.conditionId).toLowerCase());
