@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 
@@ -75,6 +75,7 @@ function sleep(ms: number) {
 /** ====== 缓存（内存 + 落盘） ====== */
 const birthCache = new Map<string, { createdAtIso: string | null; cachedAtMs: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24小时
+const NULL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const CACHE_FILE = path.join(process.cwd(), ".birthCache.json");
 
 let cacheLoaded = false;
@@ -196,7 +197,9 @@ async function enrichCreatedAt(addresses: string[], maxUnique: number) {
   const needFetch: string[] = [];
   for (const addr of uniq) {
     const cached = birthCache.get(addr);
-    if (cached && now - cached.cachedAtMs < CACHE_TTL_MS) {
+    const ttl = cached?.createdAtIso ? CACHE_TTL_MS : NULL_CACHE_TTL_MS;
+
+    if (cached && now - cached.cachedAtMs < ttl) {
       resultMap.set(addr, cached.createdAtIso);
     } else {
       needFetch.push(addr);
@@ -447,9 +450,9 @@ export async function GET(req: Request) {
 
     const url = new URL(req.url);
 
-    // ✅ 只拉 >= 10000 的现金成交；最多 100 条
+    // ✅ 只拉 >= 10000 的现金成交；最多 30 条
     const MIN_CASH_USD = Number(url.searchParams.get("minCash") ?? 10000);
-    const LIMIT = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") ?? 100)));
+    const LIMIT = Math.max(1, Math.min(30, Number(url.searchParams.get("limit") ?? 30)));
 
     // 1) 拉 Polymarket 真实 trades
     const pmUrl = new URL("https://data-api.polymarket.com/trades");
@@ -473,6 +476,9 @@ export async function GET(req: Request) {
     }
 
     const trades = (await res.json()) as PMTrade[];
+    if (!Array.isArray(trades) || trades.length === 0) {
+      return NextResponse.json([], { headers: { "Cache-Control": "no-store" } });
+    }
 
     // 2) 先映射成 Alert（createdAt / category 先占位）
     const rawAlerts: Alert[] = trades.map((t, i) => {
@@ -505,11 +511,11 @@ export async function GET(req: Request) {
 
     // 3) 批量查 代理钱包创建时间 createdAt
     const addrList = rawAlerts.map((a) => a.walletAddress);
-    const createdMap = await enrichCreatedAt(addrList, 100);
-
-    // 4) 批量查 板块分类（按 conditionId）
     const conditionIds = trades.map((t) => t.conditionId);
-    const condToCat = await enrichCategoriesByConditionIds(conditionIds);
+    const [createdMap, condToCat] = await Promise.all([
+      enrichCreatedAt(addrList, 100),
+      enrichCategoriesByConditionIds(conditionIds),
+    ]);
 
     // 5) 用 createdAt 计算 “7天内新钱包”，并回填 category/subcategory
     const NEW_DAYS = 7;

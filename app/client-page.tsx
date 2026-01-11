@@ -66,9 +66,13 @@ function parseWatchlist(v: string | null): Set<string> {
   if (!v) return new Set();
   const parts = v
     .split(",")
-    .map((s) => s.trim())
+    .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
   return new Set(parts);
+}
+
+function normalizeAddr(addr: string) {
+  return addr.trim().toLowerCase();
 }
 
 function normalizeCat(raw: any): string {
@@ -268,8 +272,11 @@ export default function Page() {
       const now = new Date();
       setLastUpdated(now.toLocaleString());
 
-      const newest = normalized?.[0]?.timestamp ?? "";
-      setLatestTradeTime(newest ? formatDate(newest) : "");
+      const newestTs = normalized.reduce((max, r) => {
+        const t = safeTime(r.timestamp);
+        return t > max ? t : max;
+      }, 0);
+      setLatestTradeTime(newestTs ? formatDate(new Date(newestTs).toISOString()) : "");
     } catch (e: any) {
       if (e?.name === "AbortError") {
         setApiError("请求超时/被中断（20秒）");
@@ -348,7 +355,7 @@ export default function Page() {
   const rows = useMemo(() => {
     let list = data;
 
-    if (watchOnly) list = list.filter((r) => watchlist.has(r.walletAddress));
+    if (watchOnly) list = list.filter((r) => watchlist.has(normalizeAddr(r.walletAddress)));
 
     if (cat !== "ALL") list = list.filter((r) => (r.category ?? "other") === cat);
 
@@ -383,8 +390,8 @@ export default function Page() {
 
     const sorted = [...list];
     sorted.sort((a, b) => {
-      const aw = watchlist.has(a.walletAddress);
-      const bw = watchlist.has(b.walletAddress);
+      const aw = watchlist.has(normalizeAddr(a.walletAddress));
+      const bw = watchlist.has(normalizeAddr(b.walletAddress));
       if (aw !== bw) return aw ? -1 : 1;
 
       if (sort === "TIME_DESC") return safeTime(b.timestamp) - safeTime(a.timestamp);
@@ -398,10 +405,11 @@ export default function Page() {
   }, [data, watchOnly, watchlist, cat, sub, walletAge, minAmount, maxAmount, query, sort]);
 
   function toggleWatch(addr: string) {
+    const normalized = normalizeAddr(addr);
     setWatchlist((prev) => {
       const next = new Set(prev);
-      if (next.has(addr)) next.delete(addr);
-      else next.add(addr);
+      if (next.has(normalized)) next.delete(normalized);
+      else next.add(normalized);
       return next;
     });
   }
@@ -607,7 +615,7 @@ export default function Page() {
 
               <tbody>
                 {rows.map((r) => {
-                  const watched = watchlist.has(r.walletAddress);
+                  const watched = watchlist.has(normalizeAddr(r.walletAddress));
                   const tags = Array.isArray(r.tags) ? r.tags : [];
 
                   return (
