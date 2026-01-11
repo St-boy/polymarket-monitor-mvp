@@ -40,8 +40,6 @@ type Alert = {
   amountUSD: number;
   timestamp: string;
 
-  isNewWallet: boolean;
-  firstSeen: string;
   note: string;
 
   createdAt: string | null; // 合约部署时间
@@ -497,8 +495,6 @@ export async function GET(req: Request) {
         amountUSD: cashUSD(t.size, t.price),
         timestamp: tsIso,
 
-        isNewWallet: false,
-        firstSeen: tsIso,
         note: `cond:${t.conditionId}`,
 
         createdAt: null,
@@ -517,22 +513,15 @@ export async function GET(req: Request) {
       enrichCategoriesByConditionIds(conditionIds),
     ]);
 
-    // 5) 用 createdAt 计算 “7天内新钱包”，并回填 category/subcategory
-    const NEW_DAYS = 7;
-    const cutoff = Date.now() - NEW_DAYS * 24 * 60 * 60 * 1000;
-
     const enriched = rawAlerts.map((a, idx) => {
       const trade = trades[idx];
       const createdAt = createdMap.get(a.walletAddress.toLowerCase()) ?? null;
-      const isNew = createdAt ? new Date(createdAt).getTime() >= cutoff : false;
 
       const catInfo = condToCat.get(String(trade.conditionId).toLowerCase());
 
       return {
         ...a,
         createdAt,
-        isNewWallet: isNew,
-        firstSeen: createdAt ?? a.firstSeen,
 
         category: catInfo?.category ?? "Other",
         subcategory: catInfo?.subcategory ?? "Other",

@@ -608,7 +608,6 @@ export default function Page() {
                   <th className="text-left p-3">方向</th>
                   <th className="text-left p-3">金额(USD)</th>
                   <th className="text-left p-3">交易时间</th>
-                  <th className="text-left p-3">新钱包</th>
                   <th className="text-left p-3">钱包创建时间</th>
                 </tr>
               </thead>
@@ -657,9 +656,15 @@ export default function Page() {
                       <td className="p-3 align-top whitespace-nowrap">{formatDate(r.timestamp)}</td>
 
                       {/* ✅ 去掉 New 标签，只显示 true/false（或你想改成 是/否） */}
-                      <td className="p-3 align-top whitespace-nowrap">{String(r.isNewWallet)}</td>
-
-                      <td className="p-3 align-top whitespace-nowrap">{r.createdAt ? formatDate(r.createdAt) : "-"}</td>
+                      <td className="p-3 align-top whitespace-nowrap">
+                        {r.createdAt ? (
+                          formatDate(r.createdAt)
+                        ) : (
+                          <span className="text-blue-600" title="未找到钱包创建时间，使用首次合约时间">
+                            {formatDate(r.timestamp)}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
